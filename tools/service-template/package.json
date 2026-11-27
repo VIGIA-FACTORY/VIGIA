@@ -1,0 +1,10 @@
+{
+  "name": "@vigia/service-template",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gradle project :tools:service-template; the scripts let Turborepo run its Gradle tasks (ADR-011).",
+  "scripts": {
+    "build": "node ../gradle.mjs :tools:service-template:assemble",
+    "test": "node ../gradle.mjs :tools:service-template:check"
+  }
+}

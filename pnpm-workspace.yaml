@@ -1,0 +1,8 @@
+# Workspaces (05.01 §2.1). Java projects are workspaces too: their package.json scripts call Gradle,
+# so one `turbo run <task> --filter=...[origin/<branch>]` builds what a change affects in both worlds (ADR-011).
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "libs/*"
+  - "services/*"
+  - "tools/service-template"
