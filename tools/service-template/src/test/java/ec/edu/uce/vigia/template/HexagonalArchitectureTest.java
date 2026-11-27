@@ -20,22 +20,30 @@ class HexagonalArchitectureTest {
 
     @ArchTest
     static final ArchRule domainIsFrameworkAndAdapterFree = noClasses()
-            .that().resideInAPackage("..domain..")
-            .should().dependOnClassesThat().resideInAnyPackage("..adapter..", "org.springframework..")
+            .that()
+            .resideInAPackage("..domain..")
+            .should()
+            .dependOnClassesThat()
+            .resideInAnyPackage("..adapter..", "org.springframework..")
             .allowEmptyShould(true)
             .because("the domain depends on nothing but itself (DP-05)");
 
     @ArchTest
     static final ArchRule applicationDoesNotDependOnAdapters = noClasses()
-            .that().resideInAPackage("..application..")
-            .should().dependOnClassesThat().resideInAPackage("..adapter..")
+            .that()
+            .resideInAPackage("..application..")
+            .should()
+            .dependOnClassesThat()
+            .resideInAPackage("..adapter..")
             .allowEmptyShould(true)
             .because("use cases reach the outside world only through ports (DP-05)");
 
     @ArchTest
     static final ArchRule portsAreSmall = classes()
-            .that().resideInAPackage("..application.port..")
-            .and().areInterfaces()
+            .that()
+            .resideInAPackage("..application.port..")
+            .and()
+            .areInterfaces()
             .should(haveAtMostMethods(MAX_PORT_METHODS))
             .allowEmptyShould(true)
             .because("ports are small and role-specific (DP-04)");

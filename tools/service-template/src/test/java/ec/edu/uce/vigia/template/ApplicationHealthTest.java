@@ -2,6 +2,7 @@ package ec.edu.uce.vigia.template;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.TestRestTemplate;
@@ -16,8 +17,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * The service starts against a real PostgreSQL, runs its Flyway migrations and answers its health probes
- * (ADR-033). Every generated service inherits this test.
+ * (ADR-033). Every generated service inherits this test. Tagged "integration": it runs in stage 8 of the
+ * pipeline (05.01 §3.2), not with the unit tests.
  */
+@Tag("integration")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureTestRestTemplate
 @Testcontainers

@@ -1,0 +1,7 @@
+#!/bin/sh
+# Stage 4 of 05.01 §3.2 before each commit: Gitleaks scans the staged changes.
+# Install once with: git config core.hooksPath tools/git-hooks
+if command -v gitleaks >/dev/null 2>&1; then
+  exec gitleaks git --staged --redact --verbose
+fi
+exec docker run --rm -v "$(pwd):/repo" -w /repo ghcr.io/gitleaks/gitleaks:v8.30.1 git --staged --redact --verbose /repo

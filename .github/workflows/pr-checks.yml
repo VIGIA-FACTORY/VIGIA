@@ -1,0 +1,212 @@
+# Stages 1 to 8 of 05.01 §3.2 on every pull request to dev and qa (D-79). Each job is a required check of
+# the rulesets of dev and qa. No AWS credentials are used here (ADR-012); actions are pinned by commit SHA.
+name: PR checks
+
+on:
+  pull_request:
+    branches: [dev, qa]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  conventions:
+    name: 0 Conventions (commitlint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1
+        with:
+          configFile: commitlint.config.mjs
+
+  lint:
+    name: 1 Lint and types
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Java formatting and style (Spotless, Checkstyle)
+        run: ./gradlew spotlessCheck checkstyleMain checkstyleTest
+      - name: TypeScript lint and types (ESLint, tsc)
+        run: pnpm turbo run lint typecheck
+
+  unit:
+    name: 2 Unit and architecture
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+      - name: JUnit 5, ArchUnit and JaCoCo (80 % of the domain)
+        run: ./gradlew test jacocoTestReport jacocoTestCoverageVerification
+      - name: Test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unit-test-reports
+          path: "**/build/reports/"
+          retention-days: 14
+
+  secrets:
+    name: 4 Secrets (Gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scan the commits of the pull request
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1
+          git /repo --log-opts="$BASE_SHA..$HEAD_SHA" --redact --verbose
+
+  sast:
+    name: 5 SAST (Semgrep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Semgrep with the Java, TypeScript and OWASP Top 10 rule sets
+        run: >-
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:1.187.0
+          semgrep scan --config p/java --config p/typescript --config p/owasp-top-ten
+          --severity ERROR --error --metrics off
+
+  quality:
+    name: 5 Quality gate (SonarQube)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - name: Skip until the SonarCloud token exists
+        if: env.SONAR_TOKEN == ''
+        run: echo "::notice::SONAR_TOKEN is not set; the SonarQube quality gate is skipped."
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.SONAR_TOKEN != ''
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        if: env.SONAR_TOKEN != ''
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        if: env.SONAR_TOKEN != ''
+      - name: Compile and measure coverage
+        if: env.SONAR_TOKEN != ''
+        run: ./gradlew test jacocoTestReport
+      - name: SonarQube scan and quality gate
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-scan-action@70bad232163b09d998ea0707ee80c0ec80798c16 # v8.5.1
+
+  dependencies:
+    name: 6 Dependencies (Trivy, SBOM)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Trivy filesystem scan (critical vulnerabilities with a fix)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          skip-dirs: "**/build"
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: SBOM with Syft
+        uses: anchore/sbom-action@dfcb83b97731532d72be422cbc51ee64adb6fd56 # v0.24.4
+        with:
+          path: .
+          format: spdx-json
+          upload-artifact: true
+
+  iac:
+    name: 7 IaC and workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: GitHub Actions workflows (zizmor)
+        uses: zizmorcore/zizmor-action@1b4550e929643b8b26a62303c6bd64814271a4f1 # v0.9.2
+        with:
+          advanced-security: false
+      # CKV_DOCKER_2 (Dockerfile HEALTHCHECK) is skipped: Kubernetes liveness and readiness probes do that job (ADR-033).
+      - name: Terraform, Helm, Kubernetes, Dockerfiles and workflows (Checkov)
+        run: >-
+          docker run --rm -v "$PWD:/src" -w /src bridgecrew/checkov:3
+          --directory infra --directory deploy --directory tools --directory .github
+          --skip-check CKV_DOCKER_2 --quiet --compact --soft-fail-on LOW
+      - name: Misconfigurations (Trivy config)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          skip-dirs: "**/build"
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+      - name: Terraform lint (TFLint), only when Terraform code exists
+        if: hashFiles('infra/**/*.tf') != ''
+        run: docker run --rm -v "$PWD:/data" -w /data/infra ghcr.io/terraform-linters/tflint:latest --recursive
+
+  integration:
+    name: 8 Integration (Testcontainers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+      - name: Tests tagged "integration" against real PostgreSQL, Kafka, RabbitMQ and LocalStack containers
+        run: ./gradlew integrationTest
+      - name: Test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: integration-test-reports
+          path: "**/build/reports/tests/integrationTest/"
+          retention-days: 14
