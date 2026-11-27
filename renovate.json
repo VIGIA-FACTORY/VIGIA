@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Dependency updates as in 05.01 §3.3: grouped by ecosystem, 7 days before a new version is proposed, patch updates merged automatically when every check passes. Pull requests go to dev (D-79).",
+  "description": "Dependency updates as in 05.01 §3.3: grouped by ecosystem, 7 days before a new version is proposed, no automatic merge: every pull request goes to dev and is merged by hand after its checks pass (D-79).",
   "extends": ["config:recommended", ":semanticCommits", ":semanticCommitScope(deps)"],
   "baseBranchPatterns": ["dev"],
   "minimumReleaseAge": "7 days",
@@ -10,7 +10,6 @@
     { "matchManagers": ["gradle", "gradle-wrapper"], "groupName": "Gradle dependencies" },
     { "matchManagers": ["npm"], "groupName": "npm dependencies" },
     { "matchManagers": ["dockerfile", "docker-compose"], "groupName": "Docker images" },
-    { "matchManagers": ["github-actions"], "groupName": "GitHub Actions", "pinDigests": true },
-    { "matchUpdateTypes": ["patch"], "automerge": true, "platformAutomerge": true }
+    { "matchManagers": ["github-actions"], "groupName": "GitHub Actions", "pinDigests": true }
   ]
 }
