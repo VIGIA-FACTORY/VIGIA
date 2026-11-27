@@ -71,6 +71,21 @@ wait_for() { # wait_for <seconds> <description> <command that prints the status>
 # --- context -----------------------------------------------------------------------------------------------------
 
 ACCOUNT="$(aws sts get-caller-identity --query Account --output text)" || { echo "No AWS session: start the lab first."; exit 1; }
+CALLER="$(aws sts get-caller-identity --query Arn --output text)"
+# The Learner Lab account is used through the role voclabs. Any other role (for example the terminal host role
+# "runserver") is not the lab account, and every check would report BLOCKED for the wrong reason.
+if [[ "$CALLER" != *"/voclabs/"* && "$CALLER" != *"/LabRole/"* && "${ALLOW_ANY_ROLE:-}" != "yes" ]]; then
+  echo "The AWS CLI is using ${CALLER}, not the Learner Lab role voclabs."
+  echo "Copy the AWS CLI credentials from 'AWS Details' into ~/.aws/credentials, then run again."
+  exit 1
+fi
+# The checks need a recent AWS CLI v2 (bedrock, rekognition create-face-liveness-session, ECR pull-through cache).
+if ! aws bedrock help > /dev/null 2>&1 || ! aws ecr create-pull-through-cache-rule help > /dev/null 2>&1; then
+  echo "This AWS CLI ($(aws --version 2>&1)) is too old for these checks. Install the current AWS CLI v2:"
+  echo "  curl -sSLo awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip && unzip -q awscliv2.zip"
+  echo "  ./aws/install -i ~/aws-cli -b ~/bin && export PATH=~/bin:\$PATH && aws --version"
+  exit 1
+fi
 LAB_ROLE="arn:aws:iam::${ACCOUNT}:role/LabRole"
 VPC="$(aws ec2 describe-vpcs --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId' --output text)"
 read -r SUBNET_A SUBNET_B <<< "$(aws ec2 describe-subnets \
