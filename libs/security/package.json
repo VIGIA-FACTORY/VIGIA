@@ -1,0 +1,10 @@
+{
+  "name": "@vigia/security",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gradle project :libs:security; the scripts let Turborepo run its Gradle tasks (ADR-011).",
+  "scripts": {
+    "build": "node ../../tools/gradle.mjs :libs:security:assemble",
+    "test": "node ../../tools/gradle.mjs :libs:security:check"
+  }
+}
