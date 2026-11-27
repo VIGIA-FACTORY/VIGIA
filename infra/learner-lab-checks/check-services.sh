@@ -39,7 +39,7 @@ record() {
 }
 
 # Runs an AWS CLI command; its error text is kept in $ERRF for fail().
-run() { "$@" 2>"$ERRF"; }
+run() { "$@" > /dev/null 2>"$ERRF"; }
 
 fail() {
   local result="FAILED"
@@ -237,14 +237,17 @@ check_rekognition() {
 
 check_bedrock() {
   # Listing models and invoking them are separate permissions; S-13 needs only the Converse call (ADR-022).
-  local model
-  for model in amazon.nova-micro-v1:0 us.amazon.nova-micro-v1:0 anthropic.claude-3-haiku-20240307-v1:0; do
+  local model tried=""
+  for model in amazon.nova-micro-v1:0 amazon.nova-lite-v1:0 us.amazon.nova-micro-v1:0 us.amazon.nova-lite-v1:0 \
+    us.anthropic.claude-3-5-haiku-20241022-v1:0 meta.llama3-8b-instruct-v1:0; do
     if run aws bedrock-runtime converse --model-id "$model" \
       --messages '[{"role":"user","content":[{"text":"Reply with OK"}]}]'; then
       record "Bedrock Converse" WORKS "Converse API answered with ${model}"
       return
     fi
+    tried+="${model}: $(grep -oE '\(([A-Za-z]+Exception|AccessDenied)\)[^.]*' "$ERRF" | head -1 | cut -c1-90); "
   done
+  echo "$tried" > "$ERRF"
   fail "Bedrock Converse"
 }
 
