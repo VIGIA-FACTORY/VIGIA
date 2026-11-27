@@ -48,6 +48,16 @@ branch → pull request to `qa` (deploys QA-1) → pull request from `qa` to `ma
 approved by the course instructor (deploys PRD-1). Commits follow Conventional Commits with the Jira key and
 a body that says what changed, why and how it was tested. Templates are in `.github/PULL_REQUEST_TEMPLATE/`.
 
+## Pipeline
+
+Pull requests to `dev` and `qa` run stages 0 to 8 of 05.01 §3.2 (`.github/workflows/pr-checks.yml`); a merge
+to `qa` builds, scans, pushes and signs the service images (`qa-images.yml`). Details and the checks to run
+before a push are in `.github/workflows/README.md`. To scan staged changes for secrets before each commit:
+
+```bash
+git config core.hooksPath tools/git-hooks
+```
+
 ## Layout
 
 The folder tree is the one of Confluence 05.01 §2.1; each top-level folder has a README.
