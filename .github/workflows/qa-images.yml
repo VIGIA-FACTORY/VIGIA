@@ -1,0 +1,88 @@
+# Stage 9 of 05.01 §3.2 on every merge to qa (D-79): each Spring Boot service under services/ is built into an
+# image with Jib, scanned with Trivy before it leaves the runner, pushed to GHCR by digest and signed with
+# cosign (keyless, GitHub OIDC). Stage 10, writing the digests into deploy/qa for Argo CD, comes with US-004.
+# No AWS credentials are used here (ADR-012); actions are pinned by commit SHA.
+name: QA images
+
+on:
+  push:
+    branches: [qa]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-images
+  cancel-in-progress: false
+
+jobs:
+  services:
+    name: Find services
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      list: ${{ steps.find.outputs.list }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: find
+        name: List services/*/build.gradle.kts
+        run: |
+          list=$(find services -mindepth 2 -maxdepth 2 -name build.gradle.kts -printf '%h\n' 2>/dev/null \
+            | xargs -r -n1 basename | sort | jq -R . | jq -sc .)
+          echo "list=${list:-[]}" >> "$GITHUB_OUTPUT"
+          if [ "${list:-[]}" = "[]" ]; then
+            echo "::notice::No service under services/ yet; no image to build."
+          fi
+
+  image:
+    name: 9 Image (${{ matrix.service }})
+    needs: services
+    if: needs.services.outputs.list != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io/vigia-factory
+      id-token: write # cosign keyless signing
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.services.outputs.list) }}
+    env:
+      SERVICE: ${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+      - name: Build the image as a tarball (Jib)
+        run: ./gradlew ":services:${SERVICE}:jibBuildTar"
+      - name: Scan the image (Trivy, CRITICAL fails)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          input: services/${{ matrix.service }}/build/jib-image.tar
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push to GHCR (Jib, tag = commit SHA)
+        run: ./gradlew ":services:${SERVICE}:jib"
+      - uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+      - name: Sign the image by digest (cosign keyless)
+        run: |
+          digest=$(cat "services/${SERVICE}/build/jib-image.digest")
+          image="ghcr.io/vigia-factory/${SERVICE}@${digest}"
+          cosign sign --yes "${image}"
+          echo "${SERVICE} ${image}" >> "$GITHUB_STEP_SUMMARY"
