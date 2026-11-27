@@ -1,0 +1,23 @@
+# Gradle and Java
+.gradle/
+build/
+/out/
+*.class
+
+# Node, pnpm and Turborepo
+node_modules/
+.turbo/
+dist/
+coverage/
+
+# IDEs and OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local secrets never go to Git
+.env
+.env.*
+!.env.example
