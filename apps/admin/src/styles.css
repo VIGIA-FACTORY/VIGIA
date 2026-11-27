@@ -1,0 +1,87 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #1d2430;
+  background: #f5f6f8;
+}
+body {
+  margin: 0;
+}
+header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: #0f3d6e;
+  color: #fff;
+}
+header nav {
+  display: flex;
+  gap: 0.5rem;
+}
+main {
+  padding: 1rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.center {
+  text-align: center;
+  margin-top: 15vh;
+}
+button {
+  padding: 0.5rem 0.9rem;
+  border: 0;
+  border-radius: 6px;
+  background: #1f6fb2;
+  color: #fff;
+  cursor: pointer;
+}
+header button {
+  background: transparent;
+  border: 1px solid #ffffff80;
+}
+header button.active {
+  background: #fff;
+  color: #0f3d6e;
+}
+button.link {
+  margin-left: 0.5rem;
+}
+form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+input,
+select {
+  padding: 0.5rem;
+  border: 1px solid #c5cbd3;
+  border-radius: 6px;
+  min-width: 10rem;
+  flex: 1 1 10rem;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+}
+th,
+td {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 1px solid #e3e6ea;
+}
+.error {
+  color: #b3261e;
+}
+.notice {
+  color: #1f6fb2;
+}
+@media (max-width: 640px) {
+  table {
+    display: block;
+    overflow-x: auto;
+  }
+}

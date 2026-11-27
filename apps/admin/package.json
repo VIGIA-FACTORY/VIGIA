@@ -1,0 +1,28 @@
+{
+  "name": "@vigia/admin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Admin web client (ADR-047): sign-in with Keycloak, people and vehicles of S-01, profile of S-09.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "oidc-client-ts": "3.5.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.3",
+    "@types/react-dom": "19.3.0",
+    "@vigia/config": "workspace:*",
+    "@vitejs/plugin-react": "6.3.0",
+    "typescript": "7.0.2",
+    "vite": "8.4.0",
+    "vitest": "5.1.2"
+  }
+}
