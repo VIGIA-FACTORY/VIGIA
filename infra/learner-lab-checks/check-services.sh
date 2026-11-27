@@ -7,6 +7,7 @@
 # Run it in the terminal of the Learner Lab page, which already has the AWS CLI and the session credentials:
 #   bash check-services.sh            quick checks, about 10 minutes, a few cents
 #   ONLY="bedrock s3" bash check-services.sh   only the named checks
+#   AURORA_CLASSES="db.r6g.large" or BEDROCK_REGION=us-west-2   other instance classes or Bedrock region
 #   bash check-services.sh --full     adds VPC Link, ECS Fargate, RDS, Aurora Global, EKS and Elastic Beanstalk;
 #                                     about 90 minutes, around USD 1 to 2 of the lab budget
 # Every resource is named vigia-check-<suffix> and is deleted at the end of its check, also when the script is
@@ -240,7 +241,7 @@ check_bedrock() {
   local model tried=""
   for model in amazon.nova-micro-v1:0 amazon.nova-lite-v1:0 us.amazon.nova-micro-v1:0 us.amazon.nova-lite-v1:0 \
     us.anthropic.claude-3-5-haiku-20241022-v1:0 meta.llama3-8b-instruct-v1:0; do
-    if run aws bedrock-runtime converse --model-id "$model" \
+    if run aws bedrock-runtime converse --region "${BEDROCK_REGION:-$REGION}" --model-id "$model" \
       --messages '[{"role":"user","content":[{"text":"Reply with OK"}]}]'; then
       record "Bedrock Converse" WORKS "Converse API answered with ${model}"
       return
@@ -369,7 +370,7 @@ check_aurora() {
   fi
   defer "aws rds wait db-cluster-deleted --db-cluster-identifier $p"
   defer "aws rds delete-db-cluster --db-cluster-identifier $p --skip-final-snapshot"
-  for c in db.serverless db.t4g.medium db.t3.medium; do
+  for c in ${AURORA_CLASSES:-db.serverless db.t4g.medium db.t3.medium}; do
     if run aws rds create-db-instance --db-instance-identifier "$p-1" --db-cluster-identifier "$p" \
       --engine aurora-postgresql --db-instance-class "$c"; then
       class="$c"
