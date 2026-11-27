@@ -316,16 +316,24 @@ check_vpc_link() {
 }
 
 check_fargate() {
-  local task code
+  local task="" code
   if ! run aws ecs create-cluster --cluster-name "$NAME"; then fail "ECS Fargate"; return; fi
   defer "aws ecs delete-cluster --cluster $NAME"
   if run aws ecs register-task-definition --family "$NAME" --requires-compatibilities FARGATE --network-mode awsvpc \
     --cpu 256 --memory 512 --execution-role-arn "$LAB_ROLE" \
     --container-definitions '[{"name":"check","image":"public.ecr.aws/docker/library/busybox:stable","command":["echo","ok"],"essential":true}]'; then
     defer "aws ecs deregister-task-definition --task-definition $NAME:1"
-    if task="$(aws ecs run-task --cluster "$NAME" --launch-type FARGATE --task-definition "$NAME" \
-      --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_A],assignPublicIp=ENABLED}" \
-      --query 'tasks[0].taskArn' --output text 2>"$ERRF")"; then
+    # The first run in a new account can fail while AWS creates the ECS service-linked role; retry a few times.
+    local attempt
+    for attempt in 1 2 3 4; do
+      task="$(aws ecs run-task --cluster "$NAME" --launch-type FARGATE --task-definition "$NAME" \
+        --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_A],assignPublicIp=ENABLED}" \
+        --query 'tasks[0].taskArn' --output text 2>"$ERRF")" && break
+      grep -q "service linked role" "$ERRF" || break
+      echo "  ECS service-linked role not ready (attempt ${attempt}); retrying in 30 s"
+      sleep 30
+    done
+    if [[ -n "$task" && "$task" != "None" ]]; then
       aws ecs wait tasks-stopped --cluster "$NAME" --tasks "$task"
       code="$(aws ecs describe-tasks --cluster "$NAME" --tasks "$task" --query 'tasks[0].containers[0].exitCode' --output text)"
       [[ "$code" == "0" ]] && record "ECS Fargate" WORKS "task with LabRole ran and exited 0 (n8n, ADR-048)" \
@@ -348,35 +356,65 @@ check_rds() {
   aws rds wait db-instance-deleted --db-instance-identifier "$db" 2>/dev/null
 }
 
-check_aurora_global() {
-  local g="${NAME}-global" p="${NAME}-primary" s="${NAME}-standby" pw
+check_aurora() {
+  # Aurora PostgreSQL for the general and commercial clusters (ADR-003): Serverless v2 first, then the small
+  # provisioned classes if Serverless is not allowed. Then the same cluster becomes a Global Database with a
+  # secondary in the standby region (ADR-049, A-06).
+  local g="${NAME}-global" p="${NAME}-primary" s="${NAME}-standby" pw class="" tried="" c
   pw="$(openssl rand -hex 16)"
-  if ! run aws rds create-global-cluster --global-cluster-identifier "$g" --engine aurora-postgresql; then fail "Aurora Global Database"; return; fi
-  defer "aws rds delete-global-cluster --global-cluster-identifier $g"
-  if run aws rds create-db-cluster --db-cluster-identifier "$p" --engine aurora-postgresql --global-cluster-identifier "$g" \
+  if ! run aws rds create-db-cluster --db-cluster-identifier "$p" --engine aurora-postgresql \
     --master-username vigia --master-user-password "$pw" --serverless-v2-scaling-configuration MinCapacity=0.5,MaxCapacity=1; then
-    defer "aws rds wait db-cluster-deleted --db-cluster-identifier $p"
-    defer "aws rds delete-db-cluster --db-cluster-identifier $p --skip-final-snapshot"
+    fail "Aurora PostgreSQL"
+    return
+  fi
+  defer "aws rds wait db-cluster-deleted --db-cluster-identifier $p"
+  defer "aws rds delete-db-cluster --db-cluster-identifier $p --skip-final-snapshot"
+  for c in db.serverless db.t4g.medium db.t3.medium; do
+    if run aws rds create-db-instance --db-instance-identifier "$p-1" --db-cluster-identifier "$p" \
+      --engine aurora-postgresql --db-instance-class "$c"; then
+      class="$c"
+      break
+    fi
+    tried+="${c}: $(grep -oE '\(([A-Za-z]+Exception|AccessDenied)\)[^.]*' "$ERRF" | head -1 | cut -c1-120); "
+  done
+  if [[ -z "$class" ]]; then
+    echo "$tried" > "$ERRF"
+    fail "Aurora PostgreSQL"
+    undo
+    return
+  fi
+  defer "aws rds wait db-instance-deleted --db-instance-identifier $p-1"
+  defer "aws rds delete-db-instance --db-instance-identifier $p-1"
+  if ! aws rds wait db-instance-available --db-instance-identifier "$p-1"; then
+    fail "Aurora PostgreSQL"
+    undo
+    return
+  fi
+  if [[ "$class" == "db.serverless" ]]; then
+    record "Aurora PostgreSQL" WORKS "Serverless v2 cluster, 0.5 to 1 ACU"
+  else
+    record "Aurora PostgreSQL" LIMITED "Serverless v2 not allowed (${tried}); works with ${class}"
+  fi
+  if run aws rds create-global-cluster --global-cluster-identifier "$g" \
+    --source-db-cluster-identifier "arn:aws:rds:${REGION}:${ACCOUNT}:cluster:$p"; then
+    defer "aws rds delete-global-cluster --global-cluster-identifier $g"
     defer "aws rds remove-from-global-cluster --global-cluster-identifier $g --db-cluster-identifier arn:aws:rds:${REGION}:${ACCOUNT}:cluster:$p"
-    run aws rds create-db-instance --db-instance-identifier "$p-1" --db-cluster-identifier "$p" --engine aurora-postgresql --db-instance-class db.serverless
-    defer "aws rds wait db-instance-deleted --db-instance-identifier $p-1"
-    defer "aws rds delete-db-instance --db-instance-identifier $p-1"
-    if aws rds wait db-instance-available --db-instance-identifier "$p-1"; then
-      record "Aurora Serverless v2" WORKS "aurora-postgresql cluster, 0.5 to 1 ACU"
-      if run aws rds create-db-cluster --region "$STANDBY" --db-cluster-identifier "$s" --engine aurora-postgresql \
-        --global-cluster-identifier "$g" --serverless-v2-scaling-configuration MinCapacity=0.5,MaxCapacity=1; then
-        defer "aws rds wait db-cluster-deleted --region $STANDBY --db-cluster-identifier $s"
-        defer "aws rds delete-db-cluster --region $STANDBY --db-cluster-identifier $s --skip-final-snapshot"
-        defer "aws rds remove-from-global-cluster --region $STANDBY --global-cluster-identifier $g --db-cluster-identifier arn:aws:rds:${STANDBY}:${ACCOUNT}:cluster:$s"
-        run aws rds create-db-instance --region "$STANDBY" --db-instance-identifier "$s-1" --db-cluster-identifier "$s" \
-          --engine aurora-postgresql --db-instance-class db.serverless
+    wait_for 900 "global cluster" "aws rds describe-global-clusters --global-cluster-identifier $g --query 'GlobalClusters[0].Status' --output text" available
+    if run aws rds create-db-cluster --region "$STANDBY" --db-cluster-identifier "$s" --engine aurora-postgresql \
+      --global-cluster-identifier "$g" --serverless-v2-scaling-configuration MinCapacity=0.5,MaxCapacity=1; then
+      defer "aws rds wait db-cluster-deleted --region $STANDBY --db-cluster-identifier $s"
+      defer "aws rds delete-db-cluster --region $STANDBY --db-cluster-identifier $s --skip-final-snapshot"
+      defer "aws rds remove-from-global-cluster --region $STANDBY --global-cluster-identifier $g --db-cluster-identifier arn:aws:rds:${STANDBY}:${ACCOUNT}:cluster:$s"
+      if run aws rds create-db-instance --region "$STANDBY" --db-instance-identifier "$s-1" --db-cluster-identifier "$s" \
+        --engine aurora-postgresql --db-instance-class "$class"; then
         defer "aws rds wait db-instance-deleted --region $STANDBY --db-instance-identifier $s-1"
         defer "aws rds delete-db-instance --region $STANDBY --db-instance-identifier $s-1"
         aws rds wait db-instance-available --region "$STANDBY" --db-instance-identifier "$s-1" \
-          && record "Aurora Global Database" WORKS "secondary cluster in ${STANDBY} replicating (A-06, ADR-049)" || fail "Aurora Global Database"
+          && record "Aurora Global Database" WORKS "secondary cluster in ${STANDBY} with ${class} (A-06, ADR-049)" \
+          || fail "Aurora Global Database"
       else fail "Aurora Global Database"; fi
-    else fail "Aurora Serverless v2"; fi
-  else fail "Aurora Serverless v2"; fi
+    else fail "Aurora Global Database"; fi
+  else fail "Aurora Global Database"; fi
   undo
 }
 
@@ -422,9 +460,25 @@ check_beanstalk() {
 
 # --- run -----------------------------------------------------------------------------------------------------------
 
+# ONLY=leftovers lists anything named vigia-check-* that is still there (it deletes nothing).
+check_leftovers() {
+  local r
+  for r in "$REGION" "$STANDBY"; do
+    echo "== ${r}"
+    aws rds describe-db-clusters --region "$r" --query "DBClusters[?starts_with(DBClusterIdentifier,'vigia-check')].DBClusterIdentifier" --output text
+    aws rds describe-db-instances --region "$r" --query "DBInstances[?starts_with(DBInstanceIdentifier,'vigia-check')].DBInstanceIdentifier" --output text
+    aws rds describe-global-clusters --region "$r" --query "GlobalClusters[?starts_with(GlobalClusterIdentifier,'vigia-check')].GlobalClusterIdentifier" --output text
+    aws eks list-clusters --region "$r" --query "clusters[?starts_with(@,'vigia-check')]" --output text
+    aws ecs list-clusters --region "$r" --query "clusterArns[?contains(@,'vigia-check')]" --output text
+    aws elasticbeanstalk describe-environments --region "$r" --query "Environments[?starts_with(EnvironmentName,'vigia-check') && Status!='Terminated'].EnvironmentName" --output text
+    aws dynamodb list-tables --region "$r" --query "TableNames[?starts_with(@,'vigia-check')]" --output text
+  done
+  aws s3api list-buckets --query "Buckets[?starts_with(Name,'vigia-check')].Name" --output text
+}
+
 # ONLY="api_gateway bedrock" runs just those checks (names without the check_ prefix).
 QUICK=(quotas s3 dynamodb secrets_kms lambda_scheduler api_gateway iot rekognition bedrock data_lake ecr observability)
-SLOW=(vpc_link fargate rds aurora_global eks beanstalk)
+SLOW=(vpc_link fargate rds aurora eks beanstalk)
 if [[ -n "${ONLY:-}" ]]; then
   read -r -a SELECTED <<< "$ONLY"
 elif [[ $FULL == true ]]; then
