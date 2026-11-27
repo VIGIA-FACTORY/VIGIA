@@ -1,0 +1,10 @@
+{
+  "name": "@vigia/s-09-identity-config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gradle project :services:s-09-identity-config; the scripts let Turborepo run its Gradle tasks (ADR-011).",
+  "scripts": {
+    "build": "node ../../tools/gradle.mjs :services:s-09-identity-config:assemble",
+    "test": "node ../../tools/gradle.mjs :services:s-09-identity-config:check"
+  }
+}
