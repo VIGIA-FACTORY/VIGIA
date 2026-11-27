@@ -419,6 +419,67 @@ check_aurora() {
   undo
 }
 
+check_aurora_dr() {
+  # D2 of US-008: regional recovery of Aurora without Global Database. A db.t4g.medium cluster is snapshotted,
+  # the snapshot is copied to the standby region with a KMS key of that region, and a cluster is restored from
+  # the copy there (ADR-049, RB-01). Cross-region automated backups are not supported for Aurora.
+  local p="${NAME}-dr" snap="${NAME}-dr-snap" copy="${NAME}-dr-copy" r="${NAME}-dr-restored" pw key
+  pw="$(openssl rand -hex 16)"
+  if ! run aws rds create-db-cluster --db-cluster-identifier "$p" --engine aurora-postgresql \
+    --master-username vigia --master-user-password "$pw" --storage-encrypted; then
+    fail "Aurora snapshot copy to ${STANDBY}"
+    return
+  fi
+  defer "aws rds wait db-cluster-deleted --db-cluster-identifier $p"
+  defer "aws rds delete-db-cluster --db-cluster-identifier $p --skip-final-snapshot"
+  if ! run aws rds create-db-instance --db-instance-identifier "$p-1" --db-cluster-identifier "$p" \
+    --engine aurora-postgresql --db-instance-class db.t4g.medium; then
+    fail "Aurora snapshot copy to ${STANDBY}"
+    undo
+    return
+  fi
+  defer "aws rds wait db-instance-deleted --db-instance-identifier $p-1"
+  defer "aws rds delete-db-instance --db-instance-identifier $p-1"
+  aws rds wait db-instance-available --db-instance-identifier "$p-1"
+  if ! run aws rds create-db-cluster-snapshot --db-cluster-identifier "$p" --db-cluster-snapshot-identifier "$snap"; then
+    fail "Aurora snapshot copy to ${STANDBY}"
+    undo
+    return
+  fi
+  defer "aws rds delete-db-cluster-snapshot --db-cluster-snapshot-identifier $snap"
+  aws rds wait db-cluster-snapshot-available --db-cluster-snapshot-identifier "$snap"
+  if ! key="$(aws kms create-key --region "$STANDBY" --description "$NAME" --query KeyMetadata.Arn --output text 2>"$ERRF")"; then
+    fail "Aurora snapshot copy to ${STANDBY}"
+    undo
+    return
+  fi
+  defer "aws kms schedule-key-deletion --region $STANDBY --key-id $key --pending-window-in-days 7"
+  if ! run aws rds copy-db-cluster-snapshot --region "$STANDBY" \
+    --source-db-cluster-snapshot-identifier "arn:aws:rds:${REGION}:${ACCOUNT}:cluster-snapshot:${snap}" \
+    --target-db-cluster-snapshot-identifier "$copy" --kms-key-id "$key" --source-region "$REGION"; then
+    fail "Aurora snapshot copy to ${STANDBY}"
+    undo
+    return
+  fi
+  defer "aws rds delete-db-cluster-snapshot --region $STANDBY --db-cluster-snapshot-identifier $copy"
+  aws rds wait db-cluster-snapshot-available --region "$STANDBY" --db-cluster-snapshot-identifier "$copy"
+  record "Aurora snapshot copy to ${STANDBY}" WORKS "encrypted cluster snapshot copied with a ${STANDBY} KMS key"
+  if run aws rds restore-db-cluster-from-snapshot --region "$STANDBY" --db-cluster-identifier "$r" \
+    --snapshot-identifier "$copy" --engine aurora-postgresql --kms-key-id "$key"; then
+    defer "aws rds wait db-cluster-deleted --region $STANDBY --db-cluster-identifier $r"
+    defer "aws rds delete-db-cluster --region $STANDBY --db-cluster-identifier $r --skip-final-snapshot"
+    if run aws rds create-db-instance --region "$STANDBY" --db-instance-identifier "$r-1" --db-cluster-identifier "$r" \
+      --engine aurora-postgresql --db-instance-class db.t4g.medium; then
+      defer "aws rds wait db-instance-deleted --region $STANDBY --db-instance-identifier $r-1"
+      defer "aws rds delete-db-instance --region $STANDBY --db-instance-identifier $r-1"
+      aws rds wait db-instance-available --region "$STANDBY" --db-instance-identifier "$r-1" \
+        && record "Aurora restore in ${STANDBY}" WORKS "cluster restored from the copied snapshot with db.t4g.medium (RB-01)" \
+        || fail "Aurora restore in ${STANDBY}"
+    else fail "Aurora restore in ${STANDBY}"; fi
+  else fail "Aurora restore in ${STANDBY}"; fi
+  undo
+}
+
 check_eks() {
   if ! run aws eks create-cluster --name "$NAME" --role-arn "$LAB_ROLE" \
     --resources-vpc-config "subnetIds=${SUBNET_A},${SUBNET_B}"; then fail "EKS"; return; fi
