@@ -1,0 +1,91 @@
+# Local environment shared by every service (05.01 §4). Credentials below are local-only defaults; real
+# credentials come from Secrets Manager through External Secrets and never go to Git (05.01 §3.3).
+#
+#   docker compose up -d                          PostgreSQL, Kafka and RabbitMQ
+#   docker compose --profile cache up -d          + Redis, for S-12 (ADR-040)
+#   docker compose --profile aws up -d            + LocalStack (DynamoDB, S3)
+#   docker compose --profile identity up -d       + Keycloak with the realm of infra/identity/realm (ADR-050)
+#   docker compose -f docker-compose.yml -f services/<name>/local/compose.yaml up --build   adds a service
+name: vigia
+
+services:
+  postgres:
+    # Local major; the Aurora PostgreSQL engine major is chosen in US-002 and this image follows it (03.04.01 §11).
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: vigia_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigia_admin}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vigia_admin"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  kafka:
+    image: apache/kafka:4.3.1 # single KRaft broker for domain events (ADR-039; Kafka 4.3, 03.04.01 §11)
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4.4-management-alpine # commands and work queues (ADR-039; RabbitMQ 4.4, 03.04.01 §11)
+    environment:
+      RABBITMQ_DEFAULT_USER: vigia
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-vigia}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine # cache of S-12 (ADR-040)
+    profiles: ["cache"]
+    ports:
+      - "6379:6379"
+
+  localstack:
+    image: localstack/localstack:4 # DynamoDB and S3 for the services that use them
+    profiles: ["aws"]
+    environment:
+      SERVICES: dynamodb,s3
+    ports:
+      - "4566:4566"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8 # identity provider and token issuer (ADR-050)
+    profiles: ["identity"]
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./infra/identity/realm:/opt/keycloak/data/import:ro
+
+volumes:
+  postgres-data:
