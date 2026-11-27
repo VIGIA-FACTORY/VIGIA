@@ -13,8 +13,20 @@ for name in VIGIA_DOMAIN ACME_EMAIL S09_DIGEST S01_DIGEST POSTGRES_PASSWORD IDEN
 done
 case "$S09_DIGEST$S01_DIGEST" in *latest*) echo "Use digests, never latest" >&2; exit 1 ;; esac
 
+# Admin web client: built in a Node container from apps/admin (no Node needed on the server), then the
+# runtime settings of this environment go into config.js, so the same build serves QA and production.
 mkdir -p admin
-[ -f admin/index.html ] || echo '<!doctype html><title>VIGIA</title><p>Admin client not deployed yet.</p>' > admin/index.html
+if [ "${SKIP_ADMIN_BUILD:-false}" != "true" ]; then
+  docker run --rm -v "$(cd ../.. && pwd)":/repo -w /repo node:24-alpine sh -c     "corepack enable && pnpm install --frozen-lockfile --filter @vigia/admin... && pnpm --filter @vigia/admin build"
+  rm -rf admin && cp -r ../../apps/admin/dist admin
+fi
+cat > admin/config.js <<CONFIG
+window.VIGIA_CONFIG = {
+  authority: "https://auth.${VIGIA_DOMAIN}/realms/vigia",
+  clientId: "vigia-admin",
+  apiUrl: "https://api.${VIGIA_DOMAIN}",
+};
+CONFIG
 
 docker compose config --quiet
 docker compose pull
