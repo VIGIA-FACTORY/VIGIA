@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: service-template
+  threads:
+    virtual:
+      enabled: true # Java 21 virtual threads (ADR-002)
+  datasource:
+    # Local defaults; every environment overrides them with SPRING_DATASOURCE_* variables.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/vigia_template}
+    username: ${SPRING_DATASOURCE_USERNAME:vigia_template}
+    password: ${SPRING_DATASOURCE_PASSWORD:vigia_template}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate # the schema belongs to Flyway (05.01 §2.2)
+  flyway:
+    locations: classpath:db/migration
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true # /actuator/health/liveness and /actuator/health/readiness (ADR-033)
+      group:
+        readiness:
+          include: readinessState, db
+  observations:
+    key-values:
+      application: ${spring.application.name}
