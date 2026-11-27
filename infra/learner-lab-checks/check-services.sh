@@ -6,6 +6,7 @@
 #
 # Run it in the terminal of the Learner Lab page, which already has the AWS CLI and the session credentials:
 #   bash check-services.sh            quick checks, about 10 minutes, a few cents
+#   ONLY="bedrock s3" bash check-services.sh   only the named checks
 #   bash check-services.sh --full     adds VPC Link, ECS Fargate, RDS, Aurora Global, EKS and Elastic Beanstalk;
 #                                     about 90 minutes, around USD 1 to 2 of the lab budget
 # Every resource is named vigia-check-<suffix> and is deleted at the end of its check, also when the script is
@@ -42,7 +43,7 @@ run() { "$@" 2>"$ERRF"; }
 
 fail() {
   local result="FAILED"
-  grep -qiE 'AccessDenied|not authorized|UnauthorizedOperation|explicit deny|is not authorized' "$ERRF" && result="BLOCKED"
+  grep -qiE 'AccessDenied|not authorized|UnauthorizedOperation|explicit deny|is not authorized|missing the following permissions' "$ERRF" && result="BLOCKED"
   record "$1" "$result" "$(tr '\n' ' ' < "$ERRF" | cut -c1-300)"
 }
 
@@ -114,6 +115,19 @@ check_s3() {
     else fail "S3 Object Lock"; fi
   else fail "S3 Object Lock"; fi
   undo
+  # Fallback for the audit chain (ADR-020) if Object Lock is blocked: versioning plus a policy that denies
+  # deleting object versions.
+  b="${NAME}-versioned"
+  if run aws s3api create-bucket --bucket "$b"; then
+    defer "aws s3api delete-bucket --bucket $b"
+    if run aws s3api put-bucket-versioning --bucket "$b" --versioning-configuration Status=Enabled \
+      && run aws s3api put-bucket-policy --bucket "$b" --policy \
+        "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Deny\",\"Principal\":\"*\",\"Action\":[\"s3:DeleteObjectVersion\"],\"Resource\":\"arn:aws:s3:::$b/*\"}]}"; then
+      defer "aws s3api delete-bucket-policy --bucket $b"
+      record "S3 versioning and deny policy" WORKS "versioned bucket that denies deleting object versions (fallback for Object Lock)"
+    else fail "S3 versioning and deny policy"; fi
+  else fail "S3 versioning and deny policy"; fi
+  undo
 }
 
 check_dynamodb() {
@@ -179,8 +193,8 @@ check_api_gateway() {
     defer "aws apigatewayv2 delete-api --api-id $api"
     if run aws apigatewayv2 create-authorizer --api-id "$api" --name keycloak --authorizer-type JWT \
       --identity-source '$request.header.Authorization' \
-      --jwt-configuration Audience=vigia-api,Issuer=https://auth.example.org/realms/vigia; then
-      record "API Gateway HTTP API" WORKS "HTTP API with JWT authorizer (issuer reachability is K2, with US-219)"
+      --jwt-configuration Audience=vigia-api,Issuer=https://accounts.google.com; then
+      record "API Gateway HTTP API" WORKS "HTTP API with JWT authorizer (public test issuer; the Keycloak issuer is K2, with US-219)"
     else fail "API Gateway HTTP API"; fi
   else fail "API Gateway HTTP API"; fi
   undo
@@ -222,15 +236,16 @@ check_rekognition() {
 }
 
 check_bedrock() {
-  local n
-  if n="$(aws bedrock list-foundation-models --query 'length(modelSummaries)' --output text 2>"$ERRF")"; then
-    if run aws bedrock-runtime converse --model-id amazon.nova-micro-v1:0 \
+  # Listing models and invoking them are separate permissions; S-13 needs only the Converse call (ADR-022).
+  local model
+  for model in amazon.nova-micro-v1:0 us.amazon.nova-micro-v1:0 anthropic.claude-3-haiku-20240307-v1:0; do
+    if run aws bedrock-runtime converse --model-id "$model" \
       --messages '[{"role":"user","content":[{"text":"Reply with OK"}]}]'; then
-      record "Bedrock" WORKS "${n} models listed; Converse API answered (amazon.nova-micro-v1:0)"
-    else
-      record "Bedrock" LIMITED "${n} models listed; Converse failed: $(tr '\n' ' ' < "$ERRF" | cut -c1-200)"
+      record "Bedrock Converse" WORKS "Converse API answered with ${model}"
+      return
     fi
-  else fail "Bedrock"; fi
+  done
+  fail "Bedrock Converse"
 }
 
 check_data_lake() {
@@ -275,7 +290,12 @@ check_observability() {
     defer "aws logs delete-log-group --log-group-name $g"
     record "CloudWatch Logs" WORKS "log group"
   else fail "CloudWatch Logs"; fi
-  run aws xray get-sampling-rules && record "X-Ray" WORKS "sampling rules readable" || fail "X-Ray"
+  local now trace
+  now="$(date +%s)"
+  trace="1-$(printf '%x' "$now")-$(openssl rand -hex 12)"
+  run aws xray put-trace-segments --trace-segment-documents \
+    "{\"id\":\"$(openssl rand -hex 8)\",\"trace_id\":\"$trace\",\"name\":\"vigia-check\",\"start_time\":$now,\"end_time\":$((now + 1))}" \
+    && record "X-Ray" WORKS "trace segment accepted (what the OpenTelemetry exporter sends)" || fail "X-Ray"
   run aws cloudtrail describe-trails && record "CloudTrail" WORKS "trails readable" || fail "CloudTrail"
   undo
 }
@@ -399,26 +419,19 @@ check_beanstalk() {
 
 # --- run -----------------------------------------------------------------------------------------------------------
 
-check_quotas
-check_s3
-check_dynamodb
-check_secrets_kms
-check_lambda_scheduler
-check_api_gateway
-check_iot
-check_rekognition
-check_bedrock
-check_data_lake
-check_ecr
-check_observability
-if [[ $FULL == true ]]; then
-  check_vpc_link
-  check_fargate
-  check_rds
-  check_aurora_global
-  check_eks
-  check_beanstalk
+# ONLY="api_gateway bedrock" runs just those checks (names without the check_ prefix).
+QUICK=(quotas s3 dynamodb secrets_kms lambda_scheduler api_gateway iot rekognition bedrock data_lake ecr observability)
+SLOW=(vpc_link fargate rds aurora_global eks beanstalk)
+if [[ -n "${ONLY:-}" ]]; then
+  read -r -a SELECTED <<< "$ONLY"
+elif [[ $FULL == true ]]; then
+  SELECTED=("${QUICK[@]}" "${SLOW[@]}")
+else
+  SELECTED=("${QUICK[@]}")
 fi
+for check in "${SELECTED[@]}"; do
+  "check_${check}"
+done
 
 echo
 echo "Done. Results in ${RESULTS}:"
