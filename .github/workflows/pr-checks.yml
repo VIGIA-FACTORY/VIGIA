@@ -105,6 +105,35 @@ jobs:
           semgrep scan --config p/java --config p/typescript --config p/owasp-top-ten
           --severity ERROR --error --metrics off
 
+  quality:
+    name: 5 Quality gate (SonarQube)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - name: Skip until the SonarCloud token exists
+        if: env.SONAR_TOKEN == ''
+        run: echo "::notice::SONAR_TOKEN is not set; the SonarQube quality gate is skipped."
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.SONAR_TOKEN != ''
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        if: env.SONAR_TOKEN != ''
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        if: env.SONAR_TOKEN != ''
+      - name: Compile and measure coverage
+        if: env.SONAR_TOKEN != ''
+        run: ./gradlew test jacocoTestReport
+      - name: SonarQube scan and quality gate
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-scan-action@70bad232163b09d998ea0707ee80c0ec80798c16 # v8.5.1
+
   dependencies:
     name: 6 Dependencies (Trivy, SBOM)
     runs-on: ubuntu-latest
