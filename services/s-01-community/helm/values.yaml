@@ -1,0 +1,22 @@
+# Values for the common chart deploy/charts/service (05.01 §2.1). Per-environment
+# values live in deploy/qa and deploy/prd; the image is set by digest, never latest.
+nameOverride: s-01-community
+
+image:
+  repository: ghcr.io/vigia-factory/s-01-community
+  digest: ""
+
+containerPort: 8080
+
+probes:
+  liveness:
+    path: /actuator/health/liveness
+  readiness:
+    path: /actuator/health/readiness
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 384Mi
+  limits:
+    memory: 512Mi
