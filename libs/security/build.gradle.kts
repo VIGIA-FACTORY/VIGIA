@@ -3,8 +3,10 @@ plugins {
 }
 
 dependencies {
-    // Standard OAuth2 resource server only: issuer-uri and JWKS, no Keycloak library (ADR-050).
-    api(libs.spring.boot.starter.oauth2.resource.server)
+    // Standard OAuth2 resource server only: issuer-uri and JWKS, no Keycloak library (ADR-050). Each service
+    // that validates tokens adds the starter itself, so the library does not switch security on everywhere.
+    compileOnly(libs.spring.boot.starter.oauth2.resource.server)
+    testImplementation(libs.spring.boot.starter.oauth2.resource.server)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.testcontainers.junit.jupiter)
