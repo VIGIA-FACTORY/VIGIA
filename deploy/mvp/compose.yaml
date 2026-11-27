@@ -1,0 +1,184 @@
+# MVP deployment profile (ADR-052, SCRUM-99): the whole increment 1 on one EC2 instance per environment.
+# Same services, contracts and identity as the documented architecture; only the runtime is simpler.
+#   cp .env.example .env   # fill it in on the server, never commit it
+#   ./deploy.sh
+name: vigia-mvp
+
+services:
+  caddy:
+    image: caddy:2.10-alpine # reverse proxy with automatic HTTPS (Let's Encrypt)
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      VIGIA_DOMAIN: ${VIGIA_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./admin:/srv/admin:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - keycloak
+      - s-09-identity-config
+      - s-01-community
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vigia_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Passwords of the per-service users created by postgres-init.sh (ADR-003: one database and user each).
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD}
+      COMMUNITY_DB_PASSWORD: ${COMMUNITY_DB_PASSWORD}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      N8N_DB_PASSWORD: ${N8N_DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init.sh:/docker-entrypoint-initdb.d/10-vigia.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vigia_admin"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  kafka:
+    image: apache/kafka:4.3.1 # one KRaft broker for domain events (ADR-039)
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: INTERNAL://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:29092 > /dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4.4-alpine # commands and the n8n trigger queue automation.n8n (ADR-039, ADR-019)
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: vigia
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8 # identity provider and token issuer (ADR-050)
+    restart: unless-stopped
+    command: ["start", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_HOSTNAME: https://auth.${VIGIA_DOMAIN}
+      KC_HTTP_ENABLED: "true" # TLS ends at Caddy
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      JAVA_OPTS_KC_HEAP: "-Xms256m -Xmx768m"
+      # Values read by infra/identity/realm/vigia-realm.json (ADR-050).
+      VIGIA_ADMIN_URL: https://admin.${VIGIA_DOMAIN}
+      VIGIA_GATE_URL: https://gate.${VIGIA_DOMAIN}
+      VIGIA_PORTAL_URL: https://portal.${VIGIA_DOMAIN}
+      VIGIA_S09_CLIENT_SECRET: ${VIGIA_S09_CLIENT_SECRET}
+      VIGIA_S01_CLIENT_SECRET: ${VIGIA_S01_CLIENT_SECRET}
+      VIGIA_N8N_CLIENT_SECRET: ${VIGIA_N8N_CLIENT_SECRET}
+      VIGIA_ENTRA_TENANT_ID: 00000000-0000-0000-0000-000000000000
+      VIGIA_ENTRA_CLIENT_ID: not-configured
+      VIGIA_ENTRA_CLIENT_SECRET: not-configured
+    ports:
+      - "127.0.0.1:8081:8080" # admin console only through an SSH tunnel, never public
+    volumes:
+      - ../../infra/identity/realm:/opt/keycloak/data/import:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  s-09-identity-config:
+    image: ghcr.io/vigia-factory/s-09-identity-config@${S09_DIGEST} # by digest, never latest (05.01 §3.2)
+    restart: unless-stopped
+    environment: &service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/identity
+      SPRING_DATASOURCE_USERNAME: identity
+      SPRING_DATASOURCE_PASSWORD: ${IDENTITY_DB_PASSWORD}
+      VIGIA_ISSUER_URI: https://auth.${VIGIA_DOMAIN}/realms/vigia
+      VIGIA_JWK_SET_URI: http://keycloak:8080/realms/vigia/protocol/openid-connect/certs
+      VIGIA_CORS_ORIGINS: https://admin.${VIGIA_DOMAIN}
+      JAVA_TOOL_OPTIONS: "-Xmx384m"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  s-01-community:
+    image: ghcr.io/vigia-factory/s-01-community@${S01_DIGEST}
+    restart: unless-stopped
+    environment:
+      <<: *service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/community
+      SPRING_DATASOURCE_USERNAME: community
+      SPRING_DATASOURCE_PASSWORD: ${COMMUNITY_DB_PASSWORD}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: vigia
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  n8n:
+    image: n8nio/n8n:2.49.8 # business workflows triggered from RabbitMQ (ADR-019)
+    restart: unless-stopped
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: n8n
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_HOST: n8n.${VIGIA_DOMAIN}
+      N8N_PROTOCOL: https
+      WEBHOOK_URL: https://n8n.${VIGIA_DOMAIN}/
+      GENERIC_TIMEZONE: America/Guayaquil
+      N8N_DIAGNOSTICS_ENABLED: "false"
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./n8n:/workflows:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  caddy-data:
+  caddy-config:
+  postgres-data:
+  kafka-data:
+  rabbitmq-data:
+  n8n-data:

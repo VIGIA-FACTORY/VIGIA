@@ -1,0 +1,52 @@
+# Public entry of the MVP (ADR-052). Caddy gets the certificates from Let's Encrypt for each host.
+{
+	email {$ACME_EMAIL}
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}
+
+# Identity provider (ADR-050). The admin console stays reachable only from the server itself.
+auth.{$VIGIA_DOMAIN} {
+	import security_headers
+	@admin path /admin*
+	respond @admin 404
+	reverse_proxy keycloak:8080
+}
+
+# APIs. Each path goes to the service that owns it (ADR-038).
+api.{$VIGIA_DOMAIN} {
+	import security_headers
+	handle /v1/me* {
+		reverse_proxy s-09-identity-config:8080
+	}
+	handle /v1/people* {
+		reverse_proxy s-01-community:8080
+	}
+	handle /v1/vehicles* {
+		reverse_proxy s-01-community:8080
+	}
+	handle {
+		respond "Not found" 404
+	}
+}
+
+# Admin web client (built from apps/admin into ./admin).
+admin.{$VIGIA_DOMAIN} {
+	import security_headers
+	root * /srv/admin
+	try_files {path} /index.html
+	file_server
+}
+
+# n8n editor and webhooks (ADR-019).
+n8n.{$VIGIA_DOMAIN} {
+	import security_headers
+	reverse_proxy n8n:5678
+}

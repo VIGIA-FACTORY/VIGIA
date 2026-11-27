@@ -1,0 +1,42 @@
+{
+  "name": "W-MVP Community registration notice",
+  "nodes": [
+    {
+      "parameters": {
+        "queue": "automation.n8n",
+        "options": {
+          "jsonParseBody": true,
+          "onlyContent": true,
+          "acknowledge": "executionFinishesSuccessfully"
+        }
+      },
+      "id": "5b2c8a52-1f0e-4f3e-9a51-6f4b1c2d0a01",
+      "name": "RabbitMQ automation.n8n",
+      "type": "n8n-nodes-base.rabbitmqTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "fromEmail": "vigia@example.test",
+        "toEmail": "admin@example.test",
+        "subject": "=VIGIA: {{ $json.type.split('.').pop() }}",
+        "emailFormat": "text",
+        "text": "=Event {{ $json.type }}\nSubject: {{ $json.subject }}\nTime: {{ $json.time }}\n\n{{ JSON.stringify($json.data, null, 2) }}",
+        "options": {}
+      },
+      "id": "5b2c8a52-1f0e-4f3e-9a51-6f4b1c2d0a02",
+      "name": "Email to the administrator",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [260, 0]
+    }
+  ],
+  "connections": {
+    "RabbitMQ automation.n8n": {
+      "main": [[{ "node": "Email to the administrator", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false
+}
