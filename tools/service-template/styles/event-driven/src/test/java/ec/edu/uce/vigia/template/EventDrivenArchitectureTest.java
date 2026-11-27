@@ -13,16 +13,21 @@ class EventDrivenArchitectureTest {
 
     @ArchTest
     static final ArchRule domainIsFrameworkFree = noClasses()
-            .that().resideInAPackage("..domain..")
-            .should().dependOnClassesThat()
+            .that()
+            .resideInAPackage("..domain..")
+            .should()
+            .dependOnClassesThat()
             .resideInAnyPackage("org.springframework..", "..listener..", "..handler..", "..publisher..")
             .allowEmptyShould(true)
             .because("the domain depends on nothing but itself (DP-05)");
 
     @ArchTest
     static final ArchRule handlersDoNotDependOnListeners = noClasses()
-            .that().resideInAPackage("..handler..")
-            .should().dependOnClassesThat().resideInAPackage("..listener..")
+            .that()
+            .resideInAPackage("..handler..")
+            .should()
+            .dependOnClassesThat()
+            .resideInAPackage("..listener..")
             .allowEmptyShould(true)
             .because("listeners call handlers, never the other way round");
 }

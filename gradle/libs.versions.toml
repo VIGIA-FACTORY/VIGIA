@@ -12,6 +12,12 @@ archunit = "1.5.1"
 logstash-logback-encoder = "9.0"
 testcontainers = "2.0.5"
 testcontainers-keycloak = "4.4.1"
+# Build and quality tooling (05.01 §3.2, stages 1, 2 and 9)
+spotless = "8.12.0"
+palantir-java-format = "2.103.0"
+checkstyle = "14.4.0"
+jacoco = "0.8.16"
+jib = "3.5.4"
 
 [libraries]
 # Spring Boot starters (versions from the Spring Boot BOM)
@@ -58,5 +64,7 @@ testcontainers-kafka = { module = "org.testcontainers:testcontainers-kafka" }
 testcontainers-rabbitmq = { module = "org.testcontainers:testcontainers-rabbitmq" }
 testcontainers-keycloak = { module = "com.github.dasniko:testcontainers-keycloak", version.ref = "testcontainers-keycloak" }
 
-# Used by tools/build-logic to put the Spring Boot Gradle plugin on the convention plugins' classpath.
+# Gradle plugins used by tools/build-logic (put on the convention plugins' classpath).
+spotless-plugin-gradle = { module = "com.diffplug.spotless:spotless-plugin-gradle", version.ref = "spotless" }
+jib-gradle-plugin = { module = "com.google.cloud.tools:jib-gradle-plugin", version.ref = "jib" }
 spring-boot-gradle-plugin = { module = "org.springframework.boot:spring-boot-gradle-plugin", version.ref = "spring-boot" }
