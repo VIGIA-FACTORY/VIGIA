@@ -1,9 +1,15 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Dependency updates as in 05.01 §3.3: grouped by ecosystem, 7 days before a new version is proposed, no automatic merge: every pull request goes to dev and is merged by hand after its checks pass (D-79). Minor and major updates change a version line of 03.04.01 §11, so they are opened only when approved in the Dependency Dashboard.",
+  "description": "Dependency updates as in 05.01 §3.3 (C-019, C-022): grouped by ecosystem, 7 days before a new version is proposed, no automatic merge. Every update is opened only when it is approved in the Dependency Dashboard; vulnerability fixes keep the Renovate default and open at once. Pull requests are drafts, so the PR checks run only after they are marked ready for review, and at most 2 are open at a time. Branches are created only on Monday before 6 a.m. (America/Guayaquil).",
   "extends": ["config:recommended", ":semanticCommits", ":semanticCommitScope(deps)"],
   "baseBranchPatterns": ["dev"],
+  "timezone": "America/Guayaquil",
+  "schedule": ["* 0-5 * * 1"],
+  "updateNotScheduled": false,
   "minimumReleaseAge": "7 days",
+  "dependencyDashboardApproval": true,
+  "draftPR": true,
+  "prConcurrentLimit": 2,
   "labels": ["enhancement"],
   "lockFileMaintenance": { "enabled": false },
   "packageRules": [
@@ -12,7 +18,6 @@
     { "matchManagers": ["npm"], "groupName": "npm dependencies" },
     { "matchManagers": ["dockerfile", "docker-compose"], "groupName": "Docker images" },
     { "matchManagers": ["github-actions"], "groupName": "GitHub Actions", "pinDigests": true },
-    { "matchUpdateTypes": ["minor", "major"], "dependencyDashboardApproval": true },
     { "matchFileNames": ["gradle.properties"], "enabled": false }
   ]
 }

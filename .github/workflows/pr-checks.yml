@@ -1,10 +1,13 @@
 # Stages 1 to 8 of 05.01 §3.2 on every pull request to dev and qa (D-79). Each job is a required check of
 # the rulesets of dev and qa. No AWS credentials are used here (ADR-012); actions are pinned by commit SHA.
+# Draft pull requests run no job, so Renovate drafts do not spend Actions minutes; the checks run when the
+# pull request is marked ready for review, and a draft cannot be merged (C-022, SCRUM-98).
 name: PR checks
 
 on:
   pull_request:
     branches: [dev, qa]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -16,6 +19,7 @@ concurrency:
 jobs:
   conventions:
     name: 0 Conventions (commitlint)
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -29,6 +33,7 @@ jobs:
 
   lint:
     name: 1 Lint and types
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -53,6 +58,7 @@ jobs:
 
   unit:
     name: 2 Unit and architecture
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -76,6 +82,7 @@ jobs:
 
   secrets:
     name: 4 Secrets (Gitleaks)
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -93,6 +100,7 @@ jobs:
 
   sast:
     name: 5 SAST (Semgrep)
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -107,6 +115,7 @@ jobs:
 
   quality:
     name: 5 Quality gate (SonarQube)
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -136,6 +145,7 @@ jobs:
 
   dependencies:
     name: 6 Dependencies (Trivy, SBOM)
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -160,6 +170,7 @@ jobs:
 
   iac:
     name: 7 IaC and workflows
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -190,6 +201,7 @@ jobs:
 
   integration:
     name: 8 Integration (Testcontainers)
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
