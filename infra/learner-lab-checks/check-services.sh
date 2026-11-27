@@ -44,7 +44,7 @@ run() { "$@" > /dev/null 2>"$ERRF"; }
 fail() {
   local result="FAILED"
   grep -qiE 'AccessDenied|not authorized|UnauthorizedOperation|explicit deny|is not authorized|missing the following permissions' "$ERRF" && result="BLOCKED"
-  record "$1" "$result" "$(tr '\n' ' ' < "$ERRF" | cut -c1-300)"
+  record "$1" "$result" "$(tr '\n' ' ' < "$ERRF" | cut -c1-600)"
 }
 
 # Registers a delete command; undo runs the pending ones in reverse order.
