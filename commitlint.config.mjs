@@ -3,6 +3,8 @@
 // Merge commits made by GitHub are ignored by commitlint by default. The body (what, why, how tested) is
 // reviewed in the pull request: commitlint reads lines such as "Why: ..." as trailers, not as body.
 export default {
+  // Dependency updates from Renovate (chore(deps): ...) carry no Jira key (05.01 §3.3).
+  ignores: [(message) => message.startsWith('chore(deps)')],
   extends: ['@commitlint/config-conventional'],
   parserPreset: {
     parserOpts: {
