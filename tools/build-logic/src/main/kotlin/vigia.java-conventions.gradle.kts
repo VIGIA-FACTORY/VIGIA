@@ -30,6 +30,24 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+// Exact resolved versions are locked in gradle.lockfile, so builds are reproducible and Trivy can scan the
+// Java dependencies in stage 6. Refresh after a dependency change: ./gradlew resolveAndLockAll --write-locks
+dependencyLocking {
+    lockAllConfigurations()
+}
+
+tasks.register("resolveAndLockAll") {
+    description = "Resolves every configuration; run with --write-locks to refresh gradle.lockfile."
+    group = "help"
+    notCompatibleWithConfigurationCache("Resolves configurations at execution time")
+    doFirst {
+        require(gradle.startParameter.isWriteDependencyLocks) { "Run with --write-locks" }
+    }
+    doLast {
+        configurations.filter { it.isCanBeResolved }.forEach { it.resolve() }
+    }
+}
+
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.compilerArgs.add("-parameters")
