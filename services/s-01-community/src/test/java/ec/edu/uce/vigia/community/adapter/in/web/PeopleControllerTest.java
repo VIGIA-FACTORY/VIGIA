@@ -2,6 +2,7 @@ package ec.edu.uce.vigia.community.adapter.in.web;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -47,6 +48,7 @@ class PeopleControllerTest {
 
         mvc.perform(post("/v1/people")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN")))
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(BODY))
                 .andExpect(status().isCreated())
@@ -60,6 +62,7 @@ class PeopleControllerTest {
 
         mvc.perform(post("/v1/people")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN")))
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(BODY))
                 .andExpect(status().isConflict())
@@ -72,6 +75,7 @@ class PeopleControllerTest {
 
         mvc.perform(post("/v1/people")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_GUARD")))
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(BODY))
                 .andExpect(status().isForbidden());

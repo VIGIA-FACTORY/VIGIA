@@ -27,7 +27,9 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(csrf -> csrf.disable())
+        // CSRF stays on for cookie-based requests; a request that carries its own bearer token cannot be forged
+        // by another site, because the browser never attaches that header on its own (OWASP CSRF cheat sheet).
+        http.csrf(csrf -> csrf.ignoringRequestMatchers(request -> request.getHeader("Authorization") != null))
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests.requestMatchers(
