@@ -1,0 +1,649 @@
+{
+  "realm": "vigia",
+  "displayName": "VIGIA",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "verifyEmail": true,
+  "resetPasswordAllowed": true,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "maxFailureWaitSeconds": 900,
+  "defaultSignatureAlgorithm": "RS256",
+  "accessTokenLifespan": 900,
+  "ssoSessionIdleTimeout": 2592000,
+  "ssoSessionMaxLifespan": 2592000,
+  "offlineSessionIdleTimeout": 2592000,
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "passwordPolicy": "length(12) and notUsername and notEmail",
+  "roles": {
+    "client": {
+      "vigia-api": [
+        {
+          "name": "GUARD",
+          "description": "Gatehouse staff (Entra ID group VIGIA-GUARD)",
+          "composite": false,
+          "clientRole": true
+        },
+        {
+          "name": "SUPERVISOR",
+          "description": "Head of security (Entra ID group VIGIA-SUPERVISOR)",
+          "composite": false,
+          "clientRole": true
+        },
+        {
+          "name": "OWNER",
+          "description": "Community member with a vehicle (local account)",
+          "composite": false,
+          "clientRole": true
+        },
+        {
+          "name": "DRIVER",
+          "description": "Member authorized to drive (local account)",
+          "composite": false,
+          "clientRole": true
+        },
+        {
+          "name": "ADMIN",
+          "description": "System administrator (Entra ID group VIGIA-ADMIN)",
+          "composite": false,
+          "clientRole": true
+        },
+        {
+          "name": "FINANCE_ADMIN",
+          "description": "Financial officer (Entra ID group VIGIA-FINANCE-ADMIN)",
+          "composite": false,
+          "clientRole": true
+        }
+      ]
+    }
+  },
+  "clients": [
+    {
+      "clientId": "vigia-api",
+      "name": "VIGIA API (audience and roles)",
+      "enabled": true,
+      "publicClient": false,
+      "bearerOnly": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false
+    },
+    {
+      "clientId": "vigia-admin",
+      "name": "Admin console (ADMIN, FINANCE_ADMIN, SUPERVISOR)",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "${VIGIA_ADMIN_URL}/*"
+      ],
+      "webOrigins": [
+        "${VIGIA_ADMIN_URL}"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+",
+        "client.session.max.lifespan": "28800",
+        "client.session.idle.timeout": "28800"
+      },
+      "protocolMappers": [
+        {
+          "name": "vigia-role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "vigia-api",
+            "claim.name": "vigia:role",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-gatehouse",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "gatehouse",
+            "claim.name": "vigia:gatehouse",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "vigia-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "vigia-gate",
+      "name": "Gatehouse console, web (GUARD)",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "${VIGIA_GATE_URL}/*"
+      ],
+      "webOrigins": [
+        "${VIGIA_GATE_URL}"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+",
+        "client.session.max.lifespan": "43200",
+        "client.session.idle.timeout": "43200"
+      },
+      "protocolMappers": [
+        {
+          "name": "vigia-role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "vigia-api",
+            "claim.name": "vigia:role",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-gatehouse",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "gatehouse",
+            "claim.name": "vigia:gatehouse",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "vigia-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "vigia-portal",
+      "name": "Community portal (OWNER, DRIVER)",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "${VIGIA_PORTAL_URL}/*"
+      ],
+      "webOrigins": [
+        "${VIGIA_PORTAL_URL}"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+",
+        "client.session.max.lifespan": "2592000",
+        "client.session.idle.timeout": "2592000"
+      },
+      "protocolMappers": [
+        {
+          "name": "vigia-role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "vigia-api",
+            "claim.name": "vigia:role",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-gatehouse",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "gatehouse",
+            "claim.name": "vigia:gatehouse",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "vigia-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "vigia-mobile",
+      "name": "Mobile app (OWNER, DRIVER)",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "vigia://auth/callback"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+",
+        "client.session.max.lifespan": "2592000",
+        "client.session.idle.timeout": "2592000"
+      },
+      "protocolMappers": [
+        {
+          "name": "vigia-role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "vigia-api",
+            "claim.name": "vigia:role",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-gatehouse",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "gatehouse",
+            "claim.name": "vigia:gatehouse",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "vigia-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "vigia-desktop",
+      "name": "Gatehouse desktop app (GUARD)",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "http://127.0.0.1/*"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+",
+        "client.session.max.lifespan": "43200",
+        "client.session.idle.timeout": "43200"
+      },
+      "protocolMappers": [
+        {
+          "name": "vigia-role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "vigia-api",
+            "claim.name": "vigia:role",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-gatehouse",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "gatehouse",
+            "claim.name": "vigia:gatehouse",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "vigia-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "vigia-s-09",
+      "name": "S-09 Identity and Configuration (Keycloak Admin API)",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${VIGIA_S09_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "vigia-role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "vigia-api",
+            "claim.name": "vigia:role",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-gatehouse",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "gatehouse",
+            "claim.name": "vigia:gatehouse",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "vigia-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "vigia-s-01",
+      "name": "S-01 Community",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${VIGIA_S01_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "vigia-role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "vigia-api",
+            "claim.name": "vigia:role",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-gatehouse",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "gatehouse",
+            "claim.name": "vigia:gatehouse",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "vigia-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "vigia-n8n",
+      "name": "n8n workflows W-01 to W-08",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${VIGIA_N8N_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "vigia-role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "vigia-api",
+            "claim.name": "vigia:role",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-gatehouse",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "gatehouse",
+            "claim.name": "vigia:gatehouse",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "vigia-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "vigia-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-vigia-s-09",
+      "enabled": true,
+      "serviceAccountClientId": "vigia-s-09",
+      "clientRoles": {
+        "realm-management": [
+          "manage-identity-providers",
+          "view-identity-providers",
+          "view-users",
+          "manage-users"
+        ]
+      }
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "entra-id",
+      "displayName": "UCE staff (Microsoft Entra ID)",
+      "providerId": "oidc",
+      "enabled": false,
+      "trustEmail": true,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "issuer": "https://login.microsoftonline.com/${VIGIA_ENTRA_TENANT_ID}/v2.0",
+        "authorizationUrl": "https://login.microsoftonline.com/${VIGIA_ENTRA_TENANT_ID}/oauth2/v2.0/authorize",
+        "tokenUrl": "https://login.microsoftonline.com/${VIGIA_ENTRA_TENANT_ID}/oauth2/v2.0/token",
+        "jwksUrl": "https://login.microsoftonline.com/${VIGIA_ENTRA_TENANT_ID}/discovery/v2.0/keys",
+        "validateSignature": "true",
+        "useJwksUrl": "true",
+        "clientId": "${VIGIA_ENTRA_CLIENT_ID}",
+        "clientSecret": "${VIGIA_ENTRA_CLIENT_SECRET}",
+        "clientAuthMethod": "client_secret_post",
+        "defaultScope": "openid profile email",
+        "syncMode": "FORCE",
+        "pkceEnabled": "true",
+        "pkceMethod": "S256"
+      }
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"unmanagedAttributePolicy\": \"ADMIN_VIEW\", \"attributes\": [{\"name\": \"username\", \"displayName\": \"Username\", \"validations\": {\"length\": {\"min\": 3, \"max\": 255}, \"username-prohibited-characters\": {}, \"up-username-not-idn-homograph\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"email\", \"displayName\": \"Email\", \"validations\": {\"email\": {}, \"length\": {\"max\": 255}}, \"required\": {\"roles\": [\"user\"]}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"firstName\", \"displayName\": \"First name\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"required\": {\"roles\": [\"user\"]}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"lastName\", \"displayName\": \"Last name\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"required\": {\"roles\": [\"user\"]}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"gatehouse\", \"displayName\": \"Gatehouse\", \"validations\": {\"length\": {\"max\": 64}}, \"permissions\": {\"view\": [\"admin\"], \"edit\": [\"admin\"]}, \"multivalued\": false}]}"
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -82,6 +82,17 @@ services:
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      # Values the realm file reads (infra/identity/realm/vigia-realm.json). Local defaults only; in QA and
+      # production they come from Secrets Manager (ADR-050). Entra ID stays disabled until its tenant exists.
+      VIGIA_ADMIN_URL: ${VIGIA_ADMIN_URL:-http://localhost:5173}
+      VIGIA_GATE_URL: ${VIGIA_GATE_URL:-http://localhost:5174}
+      VIGIA_PORTAL_URL: ${VIGIA_PORTAL_URL:-http://localhost:5175}
+      VIGIA_S09_CLIENT_SECRET: ${VIGIA_S09_CLIENT_SECRET:-local-only-s09}
+      VIGIA_S01_CLIENT_SECRET: ${VIGIA_S01_CLIENT_SECRET:-local-only-s01}
+      VIGIA_N8N_CLIENT_SECRET: ${VIGIA_N8N_CLIENT_SECRET:-local-only-n8n}
+      VIGIA_ENTRA_TENANT_ID: ${VIGIA_ENTRA_TENANT_ID:-00000000-0000-0000-0000-000000000000}
+      VIGIA_ENTRA_CLIENT_ID: ${VIGIA_ENTRA_CLIENT_ID:-not-configured}
+      VIGIA_ENTRA_CLIENT_SECRET: ${VIGIA_ENTRA_CLIENT_SECRET:-not-configured}
     ports:
       - "8180:8080"
     volumes:
