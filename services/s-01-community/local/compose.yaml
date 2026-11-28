@@ -1,0 +1,19 @@
+# Adds this service to the local environment of docker-compose.yml (05.01 §4):
+#   docker compose -f docker-compose.yml -f services/s-01-community/local/compose.yaml up --build
+# Paths are relative to the repository root, where docker-compose.yml lives.
+services:
+  postgres:
+    volumes:
+      - ./services/s-01-community/local/create-database.sql:/docker-entrypoint-initdb.d/s-01-community.sql:ro
+
+  s-01-community:
+    build:
+      context: .
+      dockerfile: services/s-01-community/Dockerfile
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vigia_community
+    ports:
+      - "8101:8080" # host port 81NN for service S-NN, so several services can run together
+    depends_on:
+      postgres:
+        condition: service_healthy
