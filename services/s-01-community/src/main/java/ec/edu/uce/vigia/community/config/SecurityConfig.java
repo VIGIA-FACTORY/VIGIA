@@ -27,10 +27,9 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        // CSRF stays on for cookie-based requests; a request that carries its own bearer token cannot be forged
-        // by another site, because the browser never attaches that header on its own (OWASP CSRF cheat sheet).
-        http.csrf(csrf -> csrf.ignoringRequestMatchers(request -> request.getHeader("Authorization") != null))
-                .cors(Customizer.withDefaults())
+        // CSRF keeps the Spring Security default; the resource server configurer already skips it for requests
+        // that carry a bearer token, which a browser never attaches on its own (OWASP CSRF cheat sheet).
+        http.cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests.requestMatchers(
                                 "/actuator/health/**", "/actuator/prometheus", "/v3/api-docs/**", "/swagger-ui/**")
