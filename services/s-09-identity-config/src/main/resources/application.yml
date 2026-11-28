@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: s-09-identity-config
+  threads:
+    virtual:
+      enabled: true # Java 21 virtual threads (ADR-002)
+  datasource:
+    # Local defaults; every environment overrides them with SPRING_DATASOURCE_* variables.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/vigia_identity_config}
+    username: ${SPRING_DATASOURCE_USERNAME:vigia_identity_config}
+    password: ${SPRING_DATASOURCE_PASSWORD:vigia_identity_config}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate # the schema belongs to Flyway (05.01 §2.2)
+  flyway:
+    locations: classpath:db/migration
+  mvc:
+    problemdetails:
+      enabled: true # RFC 9457 error responses (ADR-033)
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # The token issuer is Keycloak (ADR-050). The JWKS may be read on an internal address while the
+          # issuer is the public auth. URL; both are checked.
+          issuer-uri: ${VIGIA_ISSUER_URI:http://localhost:8180/realms/vigia}
+          jwk-set-uri: ${VIGIA_JWK_SET_URI:http://localhost:8180/realms/vigia/protocol/openid-connect/certs}
+          audiences: vigia-api
+
+vigia:
+  cors:
+    origins: ${VIGIA_CORS_ORIGINS:http://localhost:5173}
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true # /actuator/health/liveness and /actuator/health/readiness (ADR-033)
+      group:
+        readiness:
+          include: readinessState, db
+  observations:
+    key-values:
+      application: ${spring.application.name}

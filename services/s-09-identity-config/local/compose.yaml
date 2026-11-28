@@ -1,0 +1,19 @@
+# Adds this service to the local environment of docker-compose.yml (05.01 §4):
+#   docker compose -f docker-compose.yml -f services/s-09-identity-config/local/compose.yaml up --build
+# Paths are relative to the repository root, where docker-compose.yml lives.
+services:
+  postgres:
+    volumes:
+      - ./services/s-09-identity-config/local/create-database.sql:/docker-entrypoint-initdb.d/s-09-identity-config.sql:ro
+
+  s-09-identity-config:
+    build:
+      context: .
+      dockerfile: services/s-09-identity-config/Dockerfile
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vigia_identity_config
+    ports:
+      - "8109:8080" # host port 81NN for service S-NN, so several services can run together
+    depends_on:
+      postgres:
+        condition: service_healthy

@@ -195,6 +195,10 @@ importers:
 
   packages/config: {}
 
+  services/s-09-identity-config: {}
+
+  tools/service-template: {}
+
 packages:
 
   '@turbo/darwin-64@2.11.13':
